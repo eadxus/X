@@ -1,0 +1,53 @@
+name: DNS IPv6 Diagnostic
+
+on: workflow_dispatch:
+
+jobs: dns-test: runs-on: ubuntu-latest
+
+steps:
+  - name: Install DNS tools
+    run: |
+      sudo apt-get update
+      sudo apt-get install -y dnsutils jq
+
+  - name: Test DNS over HTTPS
+    run: |
+      for domain in www.google.com google.com; do
+        for type in A AAAA; do
+          echo ""
+          echo "========================================"
+          echo "DOMAIN: $domain TYPE: $type"
+          echo "========================================"
+
+          echo "--- Cloudflare ---"
+          curl -fsS \
+            -H 'accept: application/dns-json' \
+            "https://cloudflare-dns.com/dns-query?name=${domain}&type=${type}" \
+            | jq -r '.Answer[]?.data'
+
+          echo "--- Google DNS ---"
+          curl -fsS \
+            "https://dns.google/resolve?name=${domain}&type=${type}" \
+            | jq -r '.Answer[]?.data'
+
+          echo "--- Quad9 ---"
+          curl -fsS \
+            -H 'accept: application/dns-json' \
+            "https://dns.quad9.net:5053/dns-query?name=${domain}&type=${type}" \
+            | jq -r '.Answer[]?.data' || true
+
+          echo "--- System DNS ---"
+          dig +short "$domain" "$type"
+
+        done
+      done
+
+  - name: Trace www.google.com AAAA
+    run: |
+      echo "========== DNS TRACE =========="
+      dig +trace www.google.com AAAA || true
+
+  - name: Check IPv6 network
+    run: |
+      echo "========== IPv6 CONNECTIVITY =========="
+      curl -6 -I --connect-timeout 10 https://www.google.com || true
