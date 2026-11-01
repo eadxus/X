@@ -240,6 +240,22 @@ def main():
         if CONFIG.OUTPUT_DIR.exists(): shutil.rmtree(CONFIG.OUTPUT_DIR)
         local_archive = CONFIG.BASE_DIR / encrypted_file_name
         if local_archive.exists(): local_archive.unlink()
+
+        # 删除 current_tunnel.txt 文件
+        current_tunnel_file = pathlib.Path("current_tunnel.txt")
+        if current_tunnel_file.is_file():
+            current_tunnel_file.unlink()
+            print("🗑 已删除 current_tunnel.txt 文件", flush=True)
+        else:
+            print("❌ current_tunnel.txt 文件不存在", flush=True)
+
+        # 从远程仓库中删除 current_tunnel.txt 文件并提交更改
+        run("git config --global user.name 'github-actions[bot]'", capture=True)
+        run("git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'", capture=True)
+        run("git rm current_tunnel.txt", capture=True)
+        run("git commit -m 'chore: remove current_tunnel.txt [skip ci]'", capture=True)
+        run("git push origin main", capture=True)
+
         print("✅ 运行结束", flush=True)
 
 
