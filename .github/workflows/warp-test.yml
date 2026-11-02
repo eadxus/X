@@ -17,18 +17,10 @@ jobs:
       - name: 📦 Install tcpdump and tshark
         run: |
           sudo apt-get update
-          # 非交互式安装 tshark，避免弹窗卡住
           echo "wireshark-common wireshark-common/install-setuid boolean true" | sudo debconf-set-selections
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y tcpdump tshark
 
-      # 🔴 开始后台全局抓包 (监听所有接口的所有流量，保存为 warp_traffic.pcap)
-      - name: 🔴 Start Packet Capture (Background)
-        run: |
-          sudo tcpdump -i any -w /tmp/warp_traffic.pcap &
-          echo "TCPDUMP_PID=$!" >> $GITHUB_ENV
-          sleep 2
-
-      # ☁️ 安装 Cloudflare WARP
+      # ☁️ 先安装 Cloudflare WARP（确保抓包能完整捕获到它从无到有的全过程）
       - name: ☁️ Install Cloudflare WARP
         run: |
           curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg \
@@ -39,49 +31,50 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cloudflare-warp
 
-      # 🚀 启动 WARP 客户端并连接
-      - name: 🚀 Start Cloudflare WARP
+      # 🔴 开始后台全局抓包 (监听所有接口的所有流量，保存为 warp_traffic.pcap)
+      - name: 🔴 Start Packet Capture (Background)
         run: |
+          sudo tcpdump -i any -w /tmp/warp_traffic.pcap &
+          echo "TCPDUMP_PID=$!" >> $GITHUB_ENV
+          sleep 2
+
+      # 🚀 启动 WARP 客户端并进行注册与登录连接（核心抓包观察窗口）
+      - name: 🚀 Register and Connect Cloudflare WARP
+        run: |
+          echo "Starting WARP registration and connection..."
           sudo warp-cli --accept-tos registration new
           sudo warp-cli --accept-tos connect
-          sleep 5
+          
+          # 给予几秒钟让登录、密钥交换和隧道建立过程充分完成
+          sleep 6
           sudo warp-cli --accept-tos status
 
-      # 🌐 主动触发测试流量
-      - name: 🌐 Trigger Test Traffic
-        run: |
-          echo "Triggering test traffic..."
-          nslookup www.cloudflare.com || true
-          curl -sI https://www.cloudflare.com || true
-          curl -sI https://one.one.one.one || true
-          sleep 3
-
-      # ⏹️ 停止抓包并进行深度解析
+      # ⏹️ 立即停止抓包并进行深度解析（过滤掉后续无关干扰）
       - name: ⏹️ Stop Packet Capture & Analyze
         run: |
-          # 停止 tcpdump
+          # 优雅停止 tcpdump
           sudo pkill -SIGINT tcpdump || true
           sleep 3
           
           echo "========================================="
-          echo " 1. 抓包期间访问过的所有外部目标 IP (TCP/UDP)"
+          echo " 1. 登录连接期间访问过的所有外部目标 IP (TCP/UDP)"
           echo "========================================="
           tshark -r /tmp/warp_traffic.pcap -T fields -e ip.dst 2>/dev/null | sort -u | grep -vE '^(10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.|127\.|0\.|255\.)' || true
 
           echo "========================================="
-          echo " 2. 捕获到的 DNS 查询域名列表"
+          echo " 2. 登录期间捕获到的 DNS 查询域名列表"
           echo "========================================="
           tshark -r /tmp/warp_traffic.pcap -Y "dns.qry.name" -T fields -e dns.qry.name 2>/dev/null | sort -u || true
 
           echo "========================================="
-          echo " 3. HTTPS 访问中解析出的 SNI 域名 (TLS 握手目标)"
+          echo " 3. HTTPS/TLS 握手中解析出的 SNI 域名 (注册/API 目标)"
           echo "========================================="
           tshark -r /tmp/warp_traffic.pcap -Y "tls.handshake.extensions_server_name" -T fields -e tls.handshake.extensions_server_name 2>/dev/null | sort -u || true
 
-      # 📤 上传原始数据包文件到 GitHub Artifacts (可在本地用 Wireshark 仔细看)
+      # 📤 上传原始数据包文件到 GitHub Artifacts (可在本地用 Wireshark 逐帧查看)
       - name: 📤 Upload Packet Capture Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: warp-network-traffic
+          name: warp-login-traffic
           path: /tmp/warp_traffic.pcap
           retention-days: 1
