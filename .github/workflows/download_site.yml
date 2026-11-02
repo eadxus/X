@@ -48,8 +48,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cloudflare-warp
 
-      # 🔴 启动后台全局抓包 (监听所有接口，定时 1 小时，以日期时间命名)
-      - name: 🔴 Start Packet Capture (Background 1 Hour)
+      # 🔴 启动后台全局抓包 (监听所有接口，定时 5 小时，以日期时间命名)
+      - name: 🔴 Start Packet Capture (Background 5 Hour)
         run: |
           TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')
           PCAP_FILE="warp_traffic_${TIMESTAMP}.pcap"
@@ -57,8 +57,8 @@ jobs:
           
           echo "开始后台抓包，保存路径: ./$PCAP_FILE，将在 1 小时后自动停止..."
           
-          # 使用 timeout 3600 限制 1 小时，-w 直接写入当前工作目录以便后续 git 提交
-          sudo timeout 3600 tcpdump -i any -w ./$PCAP_FILE > /dev/null 2>&1 &
+          # 使用 timeout 18000 限制 5 小时，-w 直接写入当前工作目录以便后续 git 提交
+          sudo timeout 18000 tcpdump -i any -w ./$PCAP_FILE > /dev/null 2>&1 &
           echo "TCPDUMP_PID=$!" >> $GITHUB_ENV
 
       # 🚀 启动 WARP 客户端并连接
